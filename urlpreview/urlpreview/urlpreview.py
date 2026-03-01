@@ -243,8 +243,9 @@ async def embed_url_preview(self, url_str, og, html_custom_headers=None, max_ima
     # Default message
     title = format_title(og.get('title', None), url_str)
     description = format_description(og.get('description', None))
+    attribution = format_attribution(og.get('oembed_attribution', None))
     image = format_image(image_mxc, image_url_str, og.get('content_type', None), format_image_width(og.get('image_width', None), max_image_embed))
-    message = "".join(filter(None, [title, description, image, image_count_note]))
+    message = "".join(filter(None, [title, description, attribution, image, image_count_note]))
     if message:
         return f"<blockquote>{message}</blockquote>"
     return None

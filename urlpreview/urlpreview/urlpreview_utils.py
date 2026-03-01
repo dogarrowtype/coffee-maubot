@@ -111,6 +111,11 @@ def format_description(description, preserve_line_breaks: bool=False):
     else:
         return f'<p>'+str(description)+'</p>'
 
+def format_attribution(attribution):
+    if not attribution:
+        return None
+    return f'<p><small>{str(attribution)}</small></p>'
+
 def format_image(image_mxc, url_str: str='', content_type: str=None, max_image_embed: int=300):
     if not image_mxc:
         return None

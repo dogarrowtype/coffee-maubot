@@ -45,7 +45,11 @@ async def fetch_oembed(self, url_str, html_custom_headers=None, **kwargs):
     oembed_type = data.get("type", "link")
 
     title = data.get("title")
-    description = _build_description(data)
+    # Filter out known-generic oEmbed titles (e.g. fixupx returns "Embed")
+    if title in {"Embed", "embed"}:
+        title = None
+
+    attribution = _build_description(data)
     image = None
     image_width = None
 
@@ -58,7 +62,8 @@ async def fetch_oembed(self, url_str, html_custom_headers=None, **kwargs):
 
     return {
         "title": title,
-        "description": check_line_breaks(description) if description else None,
+        "description": None,
+        "oembed_attribution": check_line_breaks(attribution) if attribution else None,
         "image": image,
         "image_mxc": None,
         "content_type": None,
