@@ -11,12 +11,14 @@ from urllib.parse import urlparse
 from .urlpreview_utils import *
 from .urlpreview_ext_htmlparser import *
 from .urlpreview_ext_json import *
+from .urlpreview_ext_oembed import *
 from .urlpreview_ext_synapse import *
 
-EXT_FALLBACK = ["synapse", "htmlparser", "json"]
+EXT_FALLBACK = ["synapse", "oembed", "htmlparser", "json"]
 EXT_ARR = {
   "htmlparser": fetch_htmlparser,
   "json": fetch_json,
+  "oembed": fetch_oembed,
   "synapse": fetch_synapse,
 }
 
@@ -32,6 +34,7 @@ class Config(BaseProxyConfig):
         helper.copy("max_image_embed")
         helper.copy("no_results_react")
         helper.copy("url_blacklist")
+        helper.copy("url_rewrite")
         helper.copy("user_blacklist")
 
 class UrlPreviewBot(Plugin):
@@ -61,6 +64,7 @@ class UrlPreviewBot(Plugin):
         MAX_IMAGE_EMBED = self.config["max_image_embed"]
         NO_RESULTS_REACT = self.config["no_results_react"]
         URL_BLACKLIST = self.config["url_blacklist"]
+        URL_REWRITE = self.config["url_rewrite"]
         await evt.mark_read()
 
         embeds = []
@@ -71,6 +75,8 @@ class UrlPreviewBot(Plugin):
             if count >= int(MAX_LINKS) or max_count >= int(MAX_LINKS)*3:
                 self.log.debug(f"[urlpreview] Reached MAX_LINKS limit: {str(MAX_LINKS)} embeds or {str(MAX_LINKS*3)} attempts")
                 break
+            # URL rewriting (before blacklist check)
+            unsafe_url = url_apply_rewrites(unsafe_url, URL_REWRITE)
             # Check URL_BLACKLIST
             url_str = url_check_blacklist(unsafe_url, URL_BLACKLIST)
             if url_str is None:

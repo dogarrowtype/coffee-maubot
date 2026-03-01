@@ -145,6 +145,14 @@ def url_check_blacklist(url, blacklist):
         return url
     return None
 
+def url_apply_rewrites(url, rewrite_rules):
+    if not rewrite_rules:
+        return url
+    for pattern, replacement in rewrite_rules.items():
+        if pattern and re.search(pattern, url):
+            return re.sub(pattern, replacement, url)
+    return url
+
 def user_check_blacklist(user, blacklist):
     if user in blacklist:
         return True

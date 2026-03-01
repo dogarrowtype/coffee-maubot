@@ -37,6 +37,7 @@ If the link returns a 404, the bot will return an emoji `no_results_react` (💨
 - `max_image_embed` - Change the maximum image width displayed in the embed. 300 is recommended.
 - `no_results_react` - Adds a reaction emoji to the message to show that no results were returned. Put `''` to disable.
 - `url_blacklist` - Disable urlpreview for an IP range or a Regex entry
+- `url_rewrite` - Rewrite URLs before fetching (see [URL Rewriting](#url-rewriting) below)
 - `user_blacklist` - Disable urlpreview for a user
 
 <details open>
@@ -61,11 +62,34 @@ N/A
 
 </details>
 
+<details open>
+{( <summary><b>oembed</b></summary> )}
+
+N/A — The oEmbed parser has no additional config options. It automatically discovers oEmbed endpoints via the [oEmbed providers registry](https://oembed.com/providers.json) and HTML `<link>` tag discovery.
+
+</details>
+
+<br />
+
+## URL Rewriting
+
+`url_rewrite` lets you automatically rewrite URLs before they are fetched. This is useful for replacing sites like Twitter/X with embed-friendly alternatives like FixupX.
+
+The config is a dictionary where each key is a regex pattern and each value is the replacement string (using Python `re.sub` syntax):
+
+```yaml
+url_rewrite:
+  'https?://(?:www\.)?(?:x|twitter)\.com/': 'https://fixupx.com/'
+  'https?://(?:www\.)?instagram\.com/': 'https://ddinstagram.com/'
+```
+
+The rewritten URL replaces the original everywhere — both for fetching preview data and in the displayed embed. Only the first matching rule is applied per URL.
+
 <br />
 
 ## Notes
 
-- This bot comes with three parsers: `htmlparser`, `json`, and `synapse`. By default, all are enabled.
+- This bot comes with four parsers: `htmlparser`, `json`, `oembed`, and `synapse`. By default, all are enabled.
 - You can control which ones to enable/disable or prioritize using `ext_enabled` (last in array takes priority).
 - Due to the length of some embeds, line-breaks are stripped from any `og:description` tags.
 - Image width relies on `og:image:width` provided by websites, and falls back to `max_image_embed` px wide. There may be an option in the future to install a dependency that'll parse image height.
@@ -85,6 +109,16 @@ N/A
 - `json` works out-of-the-box by directly fetching pages with `application/json` mime_type and parsing using `json` (built-in).
 - `json` may leak your server's IP, and is recommended for bots hosted in a VPS/server environment.
 - By default, JSON results are truncated to `json_max_char` (2000) characters in chat.
+
+</details>
+
+<details>
+{( <summary><b>oembed</b></summary> )}
+
+- `oembed` supports the [oEmbed protocol](https://oembed.com/) for rich embeds from 500+ providers (YouTube, Flickr, Spotify, etc.).
+- On first use, it fetches and caches the [oEmbed providers registry](https://oembed.com/providers.json) to match URLs to known endpoints directly — no extra page fetch needed.
+- For URLs not in the registry, it falls back to HTML discovery by looking for `<link rel="alternate" type="application/json+oembed">` tags.
+- `oembed` may leak your server's IP when fetching oEmbed endpoints or doing HTML discovery.
 
 </details>
 

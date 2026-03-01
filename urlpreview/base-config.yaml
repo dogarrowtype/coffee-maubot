@@ -1,4 +1,4 @@
-ext_enabled: ["json", "synapse", "htmlparser"]
+ext_enabled: ["json", "synapse", "oembed", "htmlparser"]
 appid: BOT_ACCESS_TOKEN
 homeserver: matrix-client.matrix.org
 html_custom_headers: { User-Agent: 'WhatsApp/2' }
@@ -34,5 +34,7 @@ url_blacklist:
   - '3fff:ffff:ffff:ffff:ffff:ffff:ffff:ffff'
   - 'ff00::/8'
   - 'fec0::/10'
+url_rewrite:
+  'https?://(?:www\.)?(?:x|twitter)\.com/': 'https://fixupx.com/'
 user_blacklist:
   - '@user:example.com'
