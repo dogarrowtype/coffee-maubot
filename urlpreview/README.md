@@ -35,6 +35,9 @@ If the link returns a 404, the bot will return an emoji `no_results_react` (💨
 - `html_custom_headers` - Set custom headers (ie. User-Agent, Accept-Encoding, etc.) for data fetching
 - `max_links` - Change how many links you'd like to process per message. 1-3 is recommended.
 - `max_image_embed` - Change the maximum image width displayed in the embed. 300 is recommended.
+- `image_link` - Set to `true` to wrap images in a clickable hyperlink to the source URL. Default `false` (plain images, avoids grey link artifact in some clients).
+- `video_upload` - Set to `true` to download and re-upload videos and audio from pages (eg. fixupx) or direct media links as native Matrix messages. Default `true`.
+- `max_video_size` - Maximum video/audio file size in MB before skipping the upload. Default `50`. Set to `0` for no limit.
 - `no_results_react` - Adds a reaction emoji to the message to show that no results were returned. Put `''` to disable.
 - `url_blacklist` - Disable urlpreview for an IP range or a Regex entry
 - `url_rewrite` - Rewrite URLs before fetching (see [URL Rewriting](#url-rewriting) below)
@@ -93,6 +96,11 @@ The rewritten URL replaces the original everywhere — both for fetching preview
 - You can control which ones to enable/disable or prioritize using `ext_enabled` (last in array takes priority).
 - Due to the length of some embeds, line-breaks are stripped from any `og:description` tags.
 - Image width relies on `og:image:width` provided by websites, and falls back to `max_image_embed` px wide. There may be an option in the future to install a dependency that'll parse image height.
+- When `video_upload` is enabled, the bot detects `og:video` / `twitter:player:stream` meta tags (eg. from fixupx video tweets), downloads the video, uploads it to the Matrix homeserver, and sends it as a native `m.video` message alongside the text embed.
+- When `video_upload` is enabled, direct links to media files are detected by content-type or URL extension, downloaded, and re-uploaded as native `m.video` or `m.audio` Matrix messages. This also works when the server returns `application/octet-stream` as the content-type. Supported formats include:
+  - **Video:** `.mp4`, `.webm`, `.mov`, `.mkv`, `.avi`, `.flv`, `.wmv`, `.mpg`/`.mpeg`, `.ts`, `.3gp`, `.3g2`, `.ogv`, `.m4v`
+  - **Audio:** `.mp3`, `.ogg`, `.oga`, `.opus`, `.flac`, `.wav`, `.m4a`, `.aac`, `.wma`, `.aiff`/`.aif`, `.mid`/`.midi`, `.amr`, `.caf`, `.mka`, `.au`, `.weba`
+- When multiple `og:image` tags are found on a page (eg. fixupx album tweets), the embed shows a `[1 of N images]` indicator.
 
 <details>
 {( <summary><b>htmlparser</b></summary> )}

@@ -32,6 +32,70 @@ async def fetch_htmlparser(self, url_str, html_custom_headers, **kwargs):
             "image_width": None,
         }
 
+    # Direct video links
+    if resp.content_type in VIDEO_TYPES:
+        media_data = await resp.read()
+        return {
+            "title": None,
+            "description": None,
+            "image": None,
+            "image_mxc": None,
+            "content_type": None,
+            "image_width": None,
+            "video": url_str,
+            "video_type": resp.content_type,
+            "video_width": None,
+            "video_height": None,
+            "media_data": media_data,
+        }
+
+    # Direct audio links
+    if resp.content_type in AUDIO_TYPES:
+        media_data = await resp.read()
+        return {
+            "title": None,
+            "description": None,
+            "image": None,
+            "image_mxc": None,
+            "content_type": None,
+            "image_width": None,
+            "audio": url_str,
+            "audio_type": resp.content_type,
+            "media_data": media_data,
+        }
+
+    # Extension-based fallback for ambiguous content types (eg. application/octet-stream)
+    if resp.content_type in ["application/octet-stream", "binary/octet-stream"]:
+        mime, category = detect_media_type_from_url(url_str)
+        if category == "video":
+            media_data = await resp.read()
+            return {
+                "title": None,
+                "description": None,
+                "image": None,
+                "image_mxc": None,
+                "content_type": None,
+                "image_width": None,
+                "video": url_str,
+                "video_type": mime,
+                "video_width": None,
+                "video_height": None,
+                "media_data": media_data,
+            }
+        elif category == "audio":
+            media_data = await resp.read()
+            return {
+                "title": None,
+                "description": None,
+                "image": None,
+                "image_mxc": None,
+                "content_type": None,
+                "image_width": None,
+                "audio": url_str,
+                "audio_type": mime,
+                "media_data": media_data,
+            }
+
     # HTML
     cont = await resp.text()
     parser = ExtractMetaTags()
@@ -65,6 +129,11 @@ class ExtractMetaTags(HTMLParser):
             "image_mxc": None,
             "content_type": None,
             "image_width": None,
+            "image_count": 0,
+            "video": None,
+            "video_type": None,
+            "video_width": None,
+            "video_height": None,
         }
 
     def handle_starttag(self, tag, attrs):
@@ -81,11 +150,14 @@ class ExtractMetaTags(HTMLParser):
             if description is not None:
                 self.og["description"] = check_line_breaks(description)
 
-            image = fetch_meta_content(attrs, "twitter:image")
-            if image is None:
-                image = fetch_meta_content(attrs, "og:image")
+            image = fetch_meta_content(attrs, "og:image")
             if image is not None:
-                self.og["image"] = image
+                self.og["image_count"] += 1
+                if self.og["image"] is None:
+                    self.og["image"] = image
+            twitter_image = fetch_meta_content(attrs, "twitter:image")
+            if twitter_image is not None and self.og["image"] is None:
+                self.og["image"] = twitter_image
 
             content_type = fetch_meta_content(attrs, "og:image:type")
             if content_type is not None:
@@ -94,3 +166,23 @@ class ExtractMetaTags(HTMLParser):
             image_width = fetch_meta_content(attrs, "og:image:width")
             if image_width is not None:
                 self.og["image_width"] = image_width
+
+            video = fetch_meta_content(attrs, "og:video")
+            if video is None:
+                video = fetch_meta_content(attrs, "twitter:player:stream")
+            if video is not None and self.og["video"] is None:
+                self.og["video"] = video
+
+            video_type = fetch_meta_content(attrs, "og:video:type")
+            if video_type is None:
+                video_type = fetch_meta_content(attrs, "twitter:player:stream:content_type")
+            if video_type is not None:
+                self.og["video_type"] = video_type
+
+            video_width = fetch_meta_content(attrs, "og:video:width")
+            if video_width is not None:
+                self.og["video_width"] = video_width
+
+            video_height = fetch_meta_content(attrs, "og:video:height")
+            if video_height is not None:
+                self.og["video_height"] = video_height

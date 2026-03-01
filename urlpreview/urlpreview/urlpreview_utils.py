@@ -4,7 +4,71 @@ import socket
 import urllib.parse
 from urllib.parse import urlparse
 
-IMAGE_TYPES = ["image/gif", "image/jpg", "image/jpeg", "image/png", "image/webp"]
+IMAGE_TYPES = [
+    "image/gif", "image/jpg", "image/jpeg", "image/png", "image/webp",
+    "image/svg+xml", "image/bmp", "image/tiff", "image/avif",
+]
+VIDEO_TYPES = [
+    "video/mp4", "video/webm", "video/quicktime", "video/ogg",
+    "video/x-matroska", "video/x-msvideo", "video/x-flv",
+    "video/mpeg", "video/mp2t", "video/3gpp", "video/3gpp2",
+    "video/x-ms-wmv", "video/x-m4v",
+]
+AUDIO_TYPES = [
+    "audio/mpeg", "audio/ogg", "audio/opus", "audio/flac",
+    "audio/wav", "audio/x-wav", "audio/aac", "audio/mp4", "audio/webm",
+    "audio/x-matroska", "audio/x-ms-wma", "audio/amr", "audio/3gpp",
+    "audio/aiff", "audio/x-aiff", "audio/basic", "audio/midi", "audio/x-midi",
+    "audio/x-caf", "audio/x-m4a",
+    "application/ogg", "application/x-flac",
+]
+
+# Extension to MIME type for fallback when content-type is ambiguous
+MEDIA_EXT_MAP = {
+    # Video
+    ".mp4": "video/mp4",
+    ".m4v": "video/x-m4v",
+    ".webm": "video/webm",
+    ".mov": "video/quicktime",
+    ".mkv": "video/x-matroska",
+    ".avi": "video/x-msvideo",
+    ".flv": "video/x-flv",
+    ".wmv": "video/x-ms-wmv",
+    ".mpg": "video/mpeg",
+    ".mpeg": "video/mpeg",
+    ".ts": "video/mp2t",
+    ".3gp": "video/3gpp",
+    ".3g2": "video/3gpp2",
+    ".ogv": "video/ogg",
+    # Audio
+    ".mp3": "audio/mpeg",
+    ".ogg": "audio/ogg",
+    ".oga": "audio/ogg",
+    ".opus": "audio/ogg",
+    ".flac": "audio/flac",
+    ".wav": "audio/wav",
+    ".m4a": "audio/mp4",
+    ".aac": "audio/aac",
+    ".wma": "audio/x-ms-wma",
+    ".aiff": "audio/aiff",
+    ".aif": "audio/aiff",
+    ".mid": "audio/midi",
+    ".midi": "audio/midi",
+    ".amr": "audio/amr",
+    ".caf": "audio/x-caf",
+    ".mka": "audio/x-matroska",
+    ".au": "audio/basic",
+    ".weba": "audio/webm",
+}
+
+def detect_media_type_from_url(url_str):
+    """Check URL path extension for known media types. Returns (mime_type, 'video'|'audio') or (None, None)."""
+    path = urlparse(url_str).path.lower().split('?')[0]
+    for ext, mime in MEDIA_EXT_MAP.items():
+        if path.endswith(ext):
+            category = "video" if mime.startswith("video/") else "audio"
+            return mime, category
+    return None, None
 
 def check_all_none_except(data, keys_to_except):
     for key, value in data.items():
@@ -104,6 +168,32 @@ async def matrix_get_image(self, image_url: str, html_custom_headers=None, mime_
         self.log.exception(f"[urlpreview] [utils] Error matrix_get_image client.upload_media: {str(err)}")
         return None
     return mxc
+
+async def matrix_upload_video(self, video_url: str, html_custom_headers=None, mime_type: str="video/mp4", filename: str="video.mp4", max_video_size: int=50, media_data: bytes=None):
+    if not video_url and not media_data:
+        return None
+    if media_data:
+        video_data = media_data
+    else:
+        try:
+            resp = await self.http.get(video_url, headers=html_custom_headers, timeout=60)
+        except Exception as err:
+            self.log.exception(f"[urlpreview] [utils] Error matrix_upload_video http.get: {str(err)}")
+            return None
+        if resp.status != 200:
+            self.log.exception(f"[urlpreview] [utils] Error matrix_upload_video resp.status: {str(resp.status)} - {str(urlparse(video_url).netloc)}")
+            return None
+        video_data = await resp.read()
+    size_bytes = len(video_data)
+    if max_video_size > 0 and size_bytes > max_video_size * 1024 * 1024:
+        self.log.info(f"[urlpreview] [utils] Video too large ({size_bytes} bytes, limit {max_video_size}MB): {str(urlparse(video_url).netloc)}")
+        return None
+    try:
+        mxc = await self.client.upload_media(video_data, mime_type=mime_type, filename=filename)
+    except Exception as err:
+        self.log.exception(f"[urlpreview] [utils] Error matrix_upload_video client.upload_media: {str(err)}")
+        return None
+    return (mxc, size_bytes)
 
 def url_check_is_in_range(ip, unsafe_url, ranges):
     for r in ranges:

@@ -1,5 +1,5 @@
 import mautrix.api
-from mautrix.types import RoomID, ImageInfo, MessageType
+from mautrix.types import RoomID, ImageInfo, MessageType, VideoInfo, AudioInfo, MediaMessageEventContent
 from mautrix.types.event.message import BaseFileInfo, Format, TextMessageEventContent
 from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
 from maubot import Plugin, MessageEvent
@@ -32,6 +32,9 @@ class Config(BaseProxyConfig):
         helper.copy("max_links")
         helper.copy("min_image_width")
         helper.copy("max_image_embed")
+        helper.copy("image_link")
+        helper.copy("video_upload")
+        helper.copy("max_video_size")
         helper.copy("no_results_react")
         helper.copy("url_blacklist")
         helper.copy("url_rewrite")
@@ -62,12 +65,16 @@ class UrlPreviewBot(Plugin):
         JSON_MAX_CHAR = self.config["json_max_char"]
         MIN_IMAGE_WIDTH = self.config["min_image_width"]
         MAX_IMAGE_EMBED = self.config["max_image_embed"]
+        IMAGE_LINK = self.config["image_link"]
+        VIDEO_UPLOAD = self.config["video_upload"]
+        MAX_VIDEO_SIZE = self.config["max_video_size"]
         NO_RESULTS_REACT = self.config["no_results_react"]
         URL_BLACKLIST = self.config["url_blacklist"]
         URL_REWRITE = self.config["url_rewrite"]
         await evt.mark_read()
 
         embeds = []
+        media = [] # Collected video/audio og dicts for later upload
         count = 0
         max_count = 0
         for _, unsafe_url in matches:
@@ -94,21 +101,91 @@ class UrlPreviewBot(Plugin):
                 "json_max_char": JSON_MAX_CHAR
             }
             og = await fetch_all(**arg_arr)
-            embed = await embed_url_preview(self, url_str=url_str, og=og, html_custom_headers=HTML_CUSTOM_HEADERS, max_image_embed=MAX_IMAGE_EMBED)
+            embed = await embed_url_preview(self, url_str=url_str, og=og, html_custom_headers=HTML_CUSTOM_HEADERS, max_image_embed=MAX_IMAGE_EMBED, image_link=IMAGE_LINK)
             if embed is not None:
                 embeds.append(embed)
                 count += 1 # Implement MAX_LINKS
+            # Collect video/audio info for later upload
+            if VIDEO_UPLOAD and (og.get('video') or og.get('audio')):
+                media.append(og)
             max_count += 1
 
-        if len(embeds) <= 0:
+        if len(embeds) <= 0 and len(media) <= 0:
             if len(matches) > 0 and NO_RESULTS_REACT:
                 try:
                     await evt.react(NO_RESULTS_REACT)
                 except: # Silently ignore if react doesn't work
                     pass
             return
-        to_send = "".join(embeds)
-        return await evt.reply(to_send, allow_html=True)
+        if len(embeds) > 0:
+            to_send = "".join(embeds)
+            await evt.reply(to_send, allow_html=True)
+
+        # Upload and send video/audio as separate native Matrix messages
+        for og in media:
+            try:
+                if og.get('video'):
+                    video_url = og['video']
+                    mime_type = og.get('video_type', 'video/mp4')
+                    ext = mime_type.split('/')[-1].split(';')[0]
+                    if ext == 'quicktime':
+                        ext = 'mov'
+                    result = await matrix_upload_video(
+                        self,
+                        video_url=video_url,
+                        html_custom_headers=HTML_CUSTOM_HEADERS,
+                        mime_type=mime_type,
+                        filename=f"video.{ext}",
+                        max_video_size=int(MAX_VIDEO_SIZE),
+                        media_data=og.get('media_data'),
+                    )
+                    if result is None:
+                        continue
+                    mxc, size_bytes = result
+                    width = int(og['video_width']) if og.get('video_width') else None
+                    height = int(og['video_height']) if og.get('video_height') else None
+                    content = MediaMessageEventContent(
+                        msgtype=MessageType.VIDEO,
+                        body=f"video.{ext}",
+                        url=mxc,
+                        info=VideoInfo(
+                            mimetype=mime_type,
+                            size=size_bytes,
+                            width=width,
+                            height=height,
+                        ),
+                    )
+                    await evt.respond(content)
+                elif og.get('audio'):
+                    audio_url = og['audio']
+                    mime_type = og.get('audio_type', 'audio/mpeg')
+                    ext = mime_type.split('/')[-1].split(';')[0]
+                    if ext == 'mpeg':
+                        ext = 'mp3'
+                    result = await matrix_upload_video(
+                        self,
+                        video_url=audio_url,
+                        html_custom_headers=HTML_CUSTOM_HEADERS,
+                        mime_type=mime_type,
+                        filename=f"audio.{ext}",
+                        max_video_size=int(MAX_VIDEO_SIZE),
+                        media_data=og.get('media_data'),
+                    )
+                    if result is None:
+                        continue
+                    mxc, size_bytes = result
+                    content = MediaMessageEventContent(
+                        msgtype=MessageType.AUDIO,
+                        body=f"audio.{ext}",
+                        url=mxc,
+                        info=AudioInfo(
+                            mimetype=mime_type,
+                            size=size_bytes,
+                        ),
+                    )
+                    await evt.respond(content)
+            except Exception as err:
+                self.log.exception(f"[urlpreview] Error sending media: {err}")
 
 
 # Utility Commands
@@ -142,7 +219,7 @@ async def fetch_all(
             self.log.exception(f"[urlpreview] Error fetch_all fetch_ext: {err}")
     return final_og
 
-async def embed_url_preview(self, url_str, og, html_custom_headers=None, max_image_embed: int=300):
+async def embed_url_preview(self, url_str, og, html_custom_headers=None, max_image_embed: int=300, image_link: bool=False):
     # Check if None
     if not og:
         return None
@@ -153,16 +230,21 @@ async def embed_url_preview(self, url_str, og, html_custom_headers=None, max_ima
     if image_mxc is None:
         image_mxc = await process_image(self, image=og.get('image', None), html_custom_headers=html_custom_headers, content_type=og.get('content_type', None))
     # Check if only contains image
-    if check_all_none_except(og, ['image', 'image_mxc', 'content_type', 'image_width']):
-        image_solo = format_image(image_mxc, url_str, og.get('content_type', None), max_image_embed=0) # Full size image
+    image_url_str = url_str if image_link else ''
+    og_meta_keys = ['image', 'image_mxc', 'content_type', 'image_width', 'image_count', 'video', 'video_type', 'video_width', 'video_height', 'audio', 'audio_type', 'media_data']
+    if check_all_none_except(og, og_meta_keys):
+        image_solo = format_image(image_mxc, image_url_str, og.get('content_type', None), max_image_embed=0) # Full size image
         if image_solo is not None:
             return f"<blockquote>{image_solo}</blockquote>"
         return None # Everything is empty
+    # Multi-image indicator
+    image_count = og.get('image_count', 0)
+    image_count_note = f'<p><i>[1 of {image_count} images]</i></p>' if image_count > 1 else None
     # Default message
     title = format_title(og.get('title', None), url_str)
     description = format_description(og.get('description', None))
-    image = format_image(image_mxc, url_str, og.get('content_type', None), format_image_width(og.get('image_width', None), max_image_embed))
-    message = "".join(filter(None, [title, description, image]))
+    image = format_image(image_mxc, image_url_str, og.get('content_type', None), format_image_width(og.get('image_width', None), max_image_embed))
+    message = "".join(filter(None, [title, description, image, image_count_note]))
     if message:
         return f"<blockquote>{message}</blockquote>"
     return None
