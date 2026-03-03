@@ -31,7 +31,6 @@ class Config(BaseProxyConfig):
         helper.copy("json_max_char")
         helper.copy("max_links")
         helper.copy("min_image_width")
-        helper.copy("max_image_embed")
         helper.copy("image_link")
         helper.copy("video_upload")
         helper.copy("max_video_size")
@@ -64,7 +63,6 @@ class UrlPreviewBot(Plugin):
         HTML_CUSTOM_HEADERS = self.config["html_custom_headers"]
         JSON_MAX_CHAR = self.config["json_max_char"]
         MIN_IMAGE_WIDTH = self.config["min_image_width"]
-        MAX_IMAGE_EMBED = self.config["max_image_embed"]
         IMAGE_LINK = self.config["image_link"]
         VIDEO_UPLOAD = self.config["video_upload"]
         MAX_VIDEO_SIZE = self.config["max_video_size"]
@@ -77,6 +75,7 @@ class UrlPreviewBot(Plugin):
         media = [] # Collected video/audio og dicts for later upload
         count = 0
         max_count = 0
+        blocked_count = 0
         for _, unsafe_url in matches:
             # Break when MAX_LINKS embeds, or processed MAX_LINKS*n links
             if count >= int(MAX_LINKS) or max_count >= int(MAX_LINKS)*3:
@@ -89,6 +88,7 @@ class UrlPreviewBot(Plugin):
             if url_str is None:
                 self.log.debug(f"[urlpreview] {evt.sender} tried to access restricted URL: {str(unsafe_url)}")
                 max_count += 1
+                blocked_count += 1
                 continue
 
             arg_arr = {
@@ -101,17 +101,21 @@ class UrlPreviewBot(Plugin):
                 "json_max_char": JSON_MAX_CHAR
             }
             og = await fetch_all(**arg_arr)
-            embed = await embed_url_preview(self, url_str=url_str, og=og, html_custom_headers=HTML_CUSTOM_HEADERS, max_image_embed=MAX_IMAGE_EMBED, image_link=IMAGE_LINK)
-            if embed is not None:
-                embeds.append(embed)
+            embed, image_info = await embed_url_preview(self, url_str=url_str, og=og, html_custom_headers=HTML_CUSTOM_HEADERS, image_link=IMAGE_LINK)
+            has_video_audio = VIDEO_UPLOAD and (og.get('video') or og.get('audio'))
+            if embed is not None or image_info is not None or has_video_audio:
+                if embed is not None:
+                    embeds.append(embed)
+                # Skip image attachment if there's a video/audio (video is the main media)
+                if image_info is not None and not has_video_audio:
+                    media.append(image_info)
+                if has_video_audio:
+                    media.append(og)
                 count += 1 # Implement MAX_LINKS
-            # Collect video/audio info for later upload
-            if VIDEO_UPLOAD and (og.get('video') or og.get('audio')):
-                media.append(og)
             max_count += 1
 
         if len(embeds) <= 0 and len(media) <= 0:
-            if len(matches) > 0 and NO_RESULTS_REACT:
+            if len(matches) > 0 and blocked_count < len(matches) and NO_RESULTS_REACT:
                 try:
                     await evt.react(NO_RESULTS_REACT)
                 except: # Silently ignore if react doesn't work
@@ -121,12 +125,23 @@ class UrlPreviewBot(Plugin):
             to_send = "".join(embeds)
             await evt.reply(to_send, allow_html=True)
 
-        # Upload and send video/audio as separate native Matrix messages
-        for og in media:
+        # Upload and send media as separate native Matrix messages
+        for item in media:
             try:
-                if og.get('video'):
-                    video_url = og['video']
-                    mime_type = og.get('video_type', 'video/mp4')
+                # Image attachment from embed
+                if item.get('_type') == 'image':
+                    content = MediaMessageEventContent(
+                        msgtype=MessageType.IMAGE,
+                        body=item.get('filename', 'image.jpg'),
+                        url=item['mxc'],
+                        info=ImageInfo(
+                            mimetype=item.get('mime_type', 'image/jpeg'),
+                        ),
+                    )
+                    await evt.respond(content)
+                elif item.get('video'):
+                    video_url = item['video']
+                    mime_type = item.get('video_type', 'video/mp4')
                     ext = mime_type.split('/')[-1].split(';')[0]
                     if ext == 'quicktime':
                         ext = 'mov'
@@ -137,13 +152,13 @@ class UrlPreviewBot(Plugin):
                         mime_type=mime_type,
                         filename=f"video.{ext}",
                         max_video_size=int(MAX_VIDEO_SIZE),
-                        media_data=og.get('media_data'),
+                        media_data=item.get('media_data'),
                     )
                     if result is None:
                         continue
                     mxc, size_bytes = result
-                    width = int(og['video_width']) if og.get('video_width') else None
-                    height = int(og['video_height']) if og.get('video_height') else None
+                    width = int(item['video_width']) if item.get('video_width') else None
+                    height = int(item['video_height']) if item.get('video_height') else None
                     content = MediaMessageEventContent(
                         msgtype=MessageType.VIDEO,
                         body=f"video.{ext}",
@@ -156,9 +171,9 @@ class UrlPreviewBot(Plugin):
                         ),
                     )
                     await evt.respond(content)
-                elif og.get('audio'):
-                    audio_url = og['audio']
-                    mime_type = og.get('audio_type', 'audio/mpeg')
+                elif item.get('audio'):
+                    audio_url = item['audio']
+                    mime_type = item.get('audio_type', 'audio/mpeg')
                     ext = mime_type.split('/')[-1].split(';')[0]
                     if ext == 'mpeg':
                         ext = 'mp3'
@@ -169,7 +184,7 @@ class UrlPreviewBot(Plugin):
                         mime_type=mime_type,
                         filename=f"audio.{ext}",
                         max_video_size=int(MAX_VIDEO_SIZE),
-                        media_data=og.get('media_data'),
+                        media_data=item.get('media_data'),
                     )
                     if result is None:
                         continue
@@ -219,33 +234,39 @@ async def fetch_all(
             self.log.exception(f"[urlpreview] Error fetch_all fetch_ext: {err}")
     return final_og
 
-async def embed_url_preview(self, url_str, og, html_custom_headers=None, max_image_embed: int=300, image_link: bool=False):
+async def embed_url_preview(self, url_str, og, html_custom_headers=None, image_link: bool=False):
     # Check if None
     if not og:
-        return None
+        return None, None
     if all(v is None for v in og):
-        return None
+        return None, None
     # Fetch image_mxc
     image_mxc = og.get('image_mxc', None)
     if image_mxc is None:
         image_mxc = await process_image(self, image=og.get('image', None), html_custom_headers=html_custom_headers, content_type=og.get('content_type', None))
-    # Check if only contains image
-    image_url_str = url_str if image_link else ''
+    # Build image attachment info if we have an image
+    content_type = og.get('content_type', 'image/jpeg')
+    image_attachment = None
+    if image_mxc:
+        ext = content_type.replace('image/', '').replace('jpeg', 'jpg') if content_type else 'jpg'
+        image_attachment = {
+            '_type': 'image',
+            'mxc': image_mxc,
+            'mime_type': content_type or 'image/jpeg',
+            'filename': f'image.{ext}',
+        }
+    # Check if only contains image (no text metadata)
     og_meta_keys = ['image', 'image_mxc', 'content_type', 'image_width', 'image_count', 'video', 'video_type', 'video_width', 'video_height', 'audio', 'audio_type', 'media_data']
     if check_all_none_except(og, og_meta_keys):
-        image_solo = format_image(image_mxc, image_url_str, og.get('content_type', None), max_image_embed=0) # Full size image
-        if image_solo is not None:
-            return f"<blockquote>{image_solo}</blockquote>"
-        return None # Everything is empty
+        # Only an image, no text - send image as attachment only
+        return None, image_attachment
     # Multi-image indicator
     image_count = og.get('image_count', 0)
     image_count_note = f'<p><i>[1 of {image_count} images]</i></p>' if image_count > 1 else None
-    # Default message
+    # Default message - text only (image sent as separate attachment)
     title = format_title(og.get('title', None), url_str)
     description = format_description(og.get('description', None))
     attribution = format_attribution(og.get('oembed_attribution', None))
-    image = format_image(image_mxc, image_url_str, og.get('content_type', None), format_image_width(og.get('image_width', None), max_image_embed))
-    message = "".join(filter(None, [title, description, attribution, image, image_count_note]))
-    if message:
-        return f"<blockquote>{message}</blockquote>"
-    return None
+    message = "".join(filter(None, [title, description, attribution, image_count_note]))
+    embed = f"<blockquote>{message}</blockquote>" if message else None
+    return embed, image_attachment

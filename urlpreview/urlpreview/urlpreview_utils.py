@@ -116,24 +116,6 @@ def format_attribution(attribution):
         return None
     return f'<p><small>{str(attribution)}</small></p>'
 
-def format_image(image_mxc, url_str: str='', content_type: str=None, max_image_embed: int=300):
-    if not image_mxc:
-        return None
-    if not content_type:
-        content_type = "Image"
-    width = ''
-    if max_image_embed > 0:
-        width = f'width="{str(max_image_embed)}" '
-    if url_str:
-        return f'<a href="{url_str}"><img src="{image_mxc}" alt="{content_type}" {width}/></a>'
-    else:
-        return f'<img src="{image_mxc}" alt="{content_type}" {width}/>'
-
-def format_image_width(image_width, max_image_embed: int=300):
-    if image_width is None:
-        return max_image_embed
-    return min(int(image_width), max_image_embed)
-
 async def process_image(self, image: str, html_custom_headers=None, content_type: str=None):
     if not image:
         return None

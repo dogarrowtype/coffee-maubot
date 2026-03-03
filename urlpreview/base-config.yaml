@@ -5,7 +5,6 @@ html_custom_headers: { User-Agent: 'WhatsApp/2' }
 json_max_char: 2000
 max_links: 3
 min_image_width: 475
-max_image_embed: 600
 image_link: false
 video_upload: true
 max_video_size: 50
