@@ -1,7 +1,7 @@
 ext_enabled: ["json", "synapse", "oembed", "htmlparser"]
 appid: BOT_ACCESS_TOKEN
 homeserver: matrix-client.matrix.org
-html_custom_headers: { User-Agent: 'WhatsApp/2' }
+html_custom_headers: { User-Agent: 'maubot-urlpreview/0.4 (+https://github.com/coffeebank/coffee-maubot)' }
 json_max_char: 2000
 max_links: 3
 min_image_width: 475

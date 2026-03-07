@@ -76,11 +76,16 @@ class UrlPreviewBot(Plugin):
         count = 0
         max_count = 0
         blocked_count = 0
+        # Get message body to check for <url> suppression
+        msg_body = evt.content.body or ''
         for _, unsafe_url in matches:
             # Break when MAX_LINKS embeds, or processed MAX_LINKS*n links
             if count >= int(MAX_LINKS) or max_count >= int(MAX_LINKS)*3:
                 self.log.debug(f"[urlpreview] Reached MAX_LINKS limit: {str(MAX_LINKS)} embeds or {str(MAX_LINKS*3)} attempts")
                 break
+            # Skip URLs wrapped in < > (embed suppression)
+            if f'<{unsafe_url}>' in msg_body:
+                continue
             # URL rewriting (before blacklist check)
             unsafe_url = url_apply_rewrites(unsafe_url, URL_REWRITE)
             # Check URL_BLACKLIST

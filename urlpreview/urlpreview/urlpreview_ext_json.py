@@ -7,15 +7,12 @@ from .urlpreview_utils import check_line_breaks
 async def fetch_json(self, url_str, json_max_char=2000, html_custom_headers=None, **kwargs):
     if not url_str:
         return None
-    if html_custom_headers:
-        html_custom_headers["Content-Type"] = "application/json"
-    else:
-        html_custom_headers = {"Content-Type": "application/json"}
+    json_headers = {**(html_custom_headers or {}), "Content-Type": "application/json"}
 
     try:
         resp = await self.http.get(
             url_str,
-            headers=html_custom_headers,
+            headers=json_headers,
             timeout=30
         )
     except Exception as err:
