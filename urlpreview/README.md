@@ -23,7 +23,11 @@ The bot will first mark the chat as read, to indicate that it has initiated prop
 
 If there are multiple links in the message, the bot will fetch up to `max_links` (3) links. If it fails, it will skip embedding that link.
 
-If the link returns a 404, the bot will return an emoji `no_results_react` (💨) on your message, to show that no results were returned.
+If the link returns a 404, the bot will return an emoji `no_results_react` (💨) on your message, to show that no results were returned. Blacklisted URLs will not trigger this reaction.
+
+To suppress embedding for a specific link, prefix it with `<`: `<https://example.com`. The bot will ignore any URLs preceded by `<`.
+
+Images from embeds are sent as native Matrix image attachments (rather than inline HTML), so users can click, download, and interact with them normally in their clients. If a link has both an image and a video, only the video is sent.
 
 `url_blacklist` and `user_blacklist` can allow you to control how urlpreview is used.
 
@@ -34,8 +38,6 @@ If the link returns a 404, the bot will return an emoji `no_results_react` (💨
 - `ext_enabled` - Change which data sources to use for meta tags (last in array takes priority)
 - `html_custom_headers` - Set custom headers (ie. User-Agent, Accept-Encoding, etc.) for data fetching
 - `max_links` - Change how many links you'd like to process per message. 1-3 is recommended.
-- `max_image_embed` - Change the maximum image width displayed in the embed. 300 is recommended.
-- `image_link` - Set to `true` to wrap images in a clickable hyperlink to the source URL. Default `false` (plain images, avoids grey link artifact in some clients).
 - `video_upload` - Set to `true` to download and re-upload videos and audio from pages (eg. fixupx) or direct media links as native Matrix messages. Default `true`.
 - `max_video_size` - Maximum video/audio file size in MB before skipping the upload. Default `50`. Set to `0` for no limit.
 - `no_results_react` - Adds a reaction emoji to the message to show that no results were returned. Put `''` to disable.
@@ -95,7 +97,7 @@ The rewritten URL replaces the original everywhere — both for fetching preview
 - This bot comes with four parsers: `htmlparser`, `json`, `oembed`, and `synapse`. By default, all are enabled.
 - You can control which ones to enable/disable or prioritize using `ext_enabled` (last in array takes priority).
 - Due to the length of some embeds, line-breaks are stripped from any `og:description` tags.
-- Image width relies on `og:image:width` provided by websites, and falls back to `max_image_embed` px wide. There may be an option in the future to install a dependency that'll parse image height.
+- Images from embeds are uploaded to the Matrix homeserver and sent as native `m.image` attachments, allowing users to interact with them normally in their clients.
 - When `video_upload` is enabled, the bot detects `og:video` / `twitter:player:stream` meta tags (eg. from fixupx video tweets), downloads the video, uploads it to the Matrix homeserver, and sends it as a native `m.video` message alongside the text embed.
 - When `video_upload` is enabled, direct links to media files are detected by content-type or URL extension, downloaded, and re-uploaded as native `m.video` or `m.audio` Matrix messages. This also works when the server returns `application/octet-stream` as the content-type. Supported formats include:
   - **Video:** `.mp4`, `.webm`, `.mov`, `.mkv`, `.avi`, `.flv`, `.wmv`, `.mpg`/`.mpeg`, `.ts`, `.3gp`, `.3g2`, `.ogv`, `.m4v`
