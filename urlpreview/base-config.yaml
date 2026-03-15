@@ -36,6 +36,13 @@ url_blacklist:
   - '3fff:ffff:ffff:ffff:ffff:ffff:ffff:ffff'
   - 'ff00::/8'
   - 'fec0::/10'
+twitter_video_api:
+  hosts:
+    - fixupx.com
+    - fxtwitter.com
+    - vxtwitter.com
+    - twittpr.com
+  api_url: https://api.fxtwitter.com
 url_rewrite:
   'https?://(?:www\.)?(?:x|twitter)\.com/': 'https://fixupx.com/'
 user_blacklist:

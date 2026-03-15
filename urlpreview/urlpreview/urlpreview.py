@@ -35,6 +35,7 @@ class Config(BaseProxyConfig):
         helper.copy("video_upload")
         helper.copy("max_video_size")
         helper.copy("no_results_react")
+        helper.copy("twitter_video_api")
         helper.copy("url_blacklist")
         helper.copy("url_rewrite")
         helper.copy("user_blacklist")
@@ -67,6 +68,7 @@ class UrlPreviewBot(Plugin):
         VIDEO_UPLOAD = self.config["video_upload"]
         MAX_VIDEO_SIZE = self.config["max_video_size"]
         NO_RESULTS_REACT = self.config["no_results_react"]
+        TWITTER_VIDEO_API = self.config["twitter_video_api"]
         URL_BLACKLIST = self.config["url_blacklist"]
         URL_REWRITE = self.config["url_rewrite"]
         await evt.mark_read()
@@ -106,6 +108,9 @@ class UrlPreviewBot(Plugin):
                 "json_max_char": JSON_MAX_CHAR
             }
             og = await fetch_all(**arg_arr)
+            # For fixupx/fxtwitter URLs, try the API to extract video if not found in meta tags
+            if VIDEO_UPLOAD and TWITTER_VIDEO_API:
+                await _try_fxtwitter_video(self, url_str, og, HTML_CUSTOM_HEADERS, TWITTER_VIDEO_API)
             embed, image_info = await embed_url_preview(self, url_str=url_str, og=og, html_custom_headers=HTML_CUSTOM_HEADERS, image_link=IMAGE_LINK)
             has_video_audio = VIDEO_UPLOAD and (og.get('video') or og.get('audio'))
             if embed is not None or image_info is not None or has_video_audio:
@@ -208,6 +213,7 @@ class UrlPreviewBot(Plugin):
                 self.log.exception(f"[urlpreview] Error sending media: {err}")
 
 
+
 # Utility Commands
 
 async def fetch_all(
@@ -238,6 +244,46 @@ async def fetch_all(
         except Exception as err:
             self.log.exception(f"[urlpreview] Error fetch_all fetch_ext: {err}")
     return final_og
+
+async def _try_fxtwitter_video(self, url_str, og, html_custom_headers, twitter_video_api):
+    """For fixupx/fxtwitter URLs, try the API to get video info when meta tags don't include it."""
+    if og.get('video'):
+        return  # Already have a video
+
+    # Only try the API when the thumbnail suggests a video tweet
+    image = og.get('image', '') or ''
+    if 'tweet_video_thumb' not in image and 'ext_tw_video_thumb' not in image and 'amplify_video_thumb' not in image:
+        return
+
+    hosts = twitter_video_api.get('hosts', [])
+    api_base = twitter_video_api.get('api_url', '')
+    if not hosts or not api_base:
+        return
+
+    parsed = urlparse(url_str)
+    if parsed.netloc not in hosts:
+        return
+
+    api_url = f"{api_base.rstrip('/')}{parsed.path}"
+    try:
+        resp = await self.http.get(api_url, timeout=30, headers=html_custom_headers)
+        if resp.status != 200:
+            self.log.debug(f"[urlpreview] fxtwitter API returned {resp.status}")
+            return
+        data = await resp.json(content_type=None)
+        tweet = data.get('tweet', {})
+        media = tweet.get('media', {})
+        # Check videos list, then fall back to all media entries with type=video
+        videos = media.get('videos') or [m for m in media.get('all', []) if m.get('type') == 'video']
+        if videos:
+            video = videos[0]
+            og['video'] = video.get('url')
+            og['video_type'] = video.get('format', 'video/mp4')
+            og['video_width'] = video.get('width')
+            og['video_height'] = video.get('height')
+            self.log.debug(f"[urlpreview] fxtwitter API found video: {og['video']}")
+    except Exception as err:
+        self.log.debug(f"[urlpreview] fxtwitter API error: {err}")
 
 async def embed_url_preview(self, url_str, og, html_custom_headers=None, image_link: bool=False):
     # Check if None
