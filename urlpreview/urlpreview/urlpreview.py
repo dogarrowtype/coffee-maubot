@@ -1,5 +1,5 @@
 import mautrix.api
-from mautrix.types import RoomID, ImageInfo, MessageType, VideoInfo, AudioInfo, MediaMessageEventContent
+from mautrix.types import RoomID, EventID, ImageInfo, MessageType, VideoInfo, AudioInfo, MediaMessageEventContent
 from mautrix.types.event.message import BaseFileInfo, Format, TextMessageEventContent
 from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
 from maubot import Plugin, MessageEvent
@@ -48,6 +48,52 @@ class UrlPreviewBot(Plugin):
     @classmethod
     def get_config_class(cls) -> Type[BaseProxyConfig]:
         return Config
+
+    @command.new("urlpreview", require_subcommand=True)
+    async def urlpreview_command(self, evt: MessageEvent) -> None:
+        pass
+
+    @urlpreview_command.subcommand(help="Delete a bot message. Usage: !urlpreview undo <matrix.to link>")
+    @command.argument("link", pass_raw=True)
+    async def undo(self, evt: MessageEvent, link: str) -> None:
+        link = link.strip()
+        if not link:
+            await evt.reply("Usage: `!embed undo <matrix.to link>`")
+            return
+        # Parse matrix.to link: https://matrix.to/#/!roomid:server/$eventid
+        parsed = urlparse(link)
+        if parsed.netloc != 'matrix.to':
+            await evt.reply("Please provide a matrix.to link to the message.")
+            return
+        fragment = parsed.fragment  # /!roomid:server/$eventid
+        if not fragment or '/' not in fragment:
+            await evt.reply("Invalid matrix.to link.")
+            return
+        parts = fragment.strip('/').split('/')
+        if len(parts) < 2:
+            await evt.reply("Invalid matrix.to link — must include room and event ID.")
+            return
+        room_id = urllib.parse.unquote(parts[0]).split('?')[0]
+        event_id = urllib.parse.unquote(parts[1]).split('?')[0]
+        # Verify the command is used in the same room
+        if room_id != evt.room_id:
+            await evt.reply("You can only undo messages in this room.")
+            return
+        # Verify the target message was sent by the bot
+        try:
+            target_evt = await self.client.get_event(room_id, EventID(event_id))
+        except Exception as err:
+            await evt.reply(f"Could not find that message: {err}")
+            return
+        if target_evt.sender != self.client.mxid:
+            await evt.reply("That message was not sent by this bot.")
+            return
+        try:
+            await self.client.redact(room_id, EventID(event_id), reason="Removed by !embed undo")
+        except Exception as err:
+            await evt.reply(f"Failed to delete message: {err}")
+            return
+        await evt.react("✅")
 
     # RFC 3986 excluding: (), []
     @command.passive("(https?:\/\/[A-Za-z0-9\-._~:\/?#@!$&'*+,;=%]+)", multiple=True)
