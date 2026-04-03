@@ -95,8 +95,8 @@ class UrlPreviewBot(Plugin):
             return
         await evt.react("✅")
 
-    # RFC 3986 excluding: (), []
-    @command.passive("(https?:\/\/[A-Za-z0-9\-._~:\/?#@!$&'*+,;=%]+)", multiple=True)
+    # RFC 3986 excluding: []
+    @command.passive(r"(https?://[A-Za-z0-9\-._~:/?#@!$&'()*+,;=%]+)", multiple=True)
     async def handler(self, evt: MessageEvent, matches: List[str]) -> None:
         # Check USER_BLACKLIST
         USER_BLACKLIST = self.config["user_blacklist"]
@@ -127,6 +127,8 @@ class UrlPreviewBot(Plugin):
         # Get message body to check for <url> suppression
         msg_body = evt.content.body or ''
         for _, unsafe_url in matches:
+            # Strip trailing unbalanced closing parens, e.g. "(https://example.com)" → no trailing ")"
+            unsafe_url = _strip_unbalanced_parens(unsafe_url)
             # Break when MAX_LINKS embeds, or processed MAX_LINKS*n links
             if count >= int(MAX_LINKS) or max_count >= int(MAX_LINKS)*3:
                 self.log.debug(f"[urlpreview] Reached MAX_LINKS limit: {str(MAX_LINKS)} embeds or {str(MAX_LINKS*3)} attempts")
@@ -261,6 +263,12 @@ class UrlPreviewBot(Plugin):
 
 
 # Utility Commands
+
+def _strip_unbalanced_parens(url: str) -> str:
+    """Strip trailing ')' chars that have no matching '(' within the URL."""
+    while url.endswith(')') and url.count('(') < url.count(')'):
+        url = url[:-1]
+    return url
 
 async def fetch_all(
         self,
