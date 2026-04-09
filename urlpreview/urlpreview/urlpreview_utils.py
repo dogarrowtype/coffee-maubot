@@ -1,6 +1,7 @@
 import ipaddress
 import re
 import socket
+import struct
 import urllib.parse
 from urllib.parse import urlparse
 
@@ -76,6 +77,50 @@ def check_all_none_except(data, keys_to_except):
             return False
     return True
 
+def get_image_dimensions(data: bytes):
+    """Parse image width/height from raw bytes. Returns (width, height) or (None, None)."""
+    if not data or len(data) < 24:
+        return None, None
+    try:
+        # PNG: 8-byte sig + 4 length + 4 "IHDR" + 4 width + 4 height (big-endian)
+        if data[:8] == b'\x89PNG\r\n\x1a\n':
+            w, h = struct.unpack('>II', data[16:24])
+            return w, h
+        # GIF: 6-byte header + 2-byte width + 2-byte height (little-endian)
+        if data[:6] in (b'GIF87a', b'GIF89a'):
+            w, h = struct.unpack('<HH', data[6:10])
+            return w, h
+        # JPEG: scan for SOF markers (0xFF 0xCx)
+        if data[:2] == b'\xff\xd8':
+            i = 2
+            while i + 8 < len(data):
+                if data[i] != 0xFF:
+                    break
+                marker = data[i + 1]
+                if marker in (0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7,
+                              0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF):
+                    h, w = struct.unpack('>HH', data[i + 5:i + 9])
+                    return w, h
+                seg_len = struct.unpack('>H', data[i + 2:i + 4])[0]
+                i += 2 + seg_len
+        # WebP: RIFF....WEBP + subformat
+        if data[:4] == b'RIFF' and data[8:12] == b'WEBP' and len(data) >= 30:
+            subformat = data[12:16]
+            if subformat == b'VP8 ':  # lossy
+                w = struct.unpack('<H', data[26:28])[0] & 0x3FFF
+                h = struct.unpack('<H', data[28:30])[0] & 0x3FFF
+                return w, h
+            if subformat == b'VP8L':  # lossless
+                bits = struct.unpack('<I', data[21:25])[0]
+                return (bits & 0x3FFF) + 1, ((bits >> 14) & 0x3FFF) + 1
+            if subformat == b'VP8X':  # extended
+                w = struct.unpack('<I', data[24:27] + b'\x00')[0] + 1
+                h = struct.unpack('<I', data[27:30] + b'\x00')[0] + 1
+                return w, h
+    except (struct.error, IndexError):
+        pass
+    return None, None
+
 async def check_image_content_type(self, image_url, html_custom_headers=None):
     if not image_url:
         return None
@@ -117,25 +162,26 @@ def format_attribution(attribution):
     return f'<p><small>{str(attribution)}</small></p>'
 
 async def process_image(self, image: str, html_custom_headers=None, content_type: str=None):
+    """Returns (mxc, size, width, height) or None."""
     if not image:
         return None
     image_url = urlparse(image)
-    # URL is mxc
+    # URL is already mxc — no size/dimension info available
     if image_url.scheme == 'mxc':
-        return image
+        return image, None, None, None
     # URL is not mxc
     if not content_type:
         content_type = await check_image_content_type(self, image, html_custom_headers=html_custom_headers)
     if not content_type:
         content_type = 'image/jpeg'
-    image_mxc = await matrix_get_image(
+    result = await matrix_get_image(
         self,
         image_url=image,
         html_custom_headers=html_custom_headers,
         mime_type=content_type,
         filename=content_type.replace('/', '.').replace('jpeg', 'jpg')
     )
-    return image_mxc
+    return result  # (mxc, size, width, height) or None
 
 async def matrix_get_image(self, image_url: str, html_custom_headers=None, mime_type: str="image/jpeg", filename: str="image.jpg"):
     if not image_url:
@@ -154,7 +200,9 @@ async def matrix_get_image(self, image_url: str, html_custom_headers=None, mime_
     except Exception as err:
         self.log.exception(f"[urlpreview] [utils] Error matrix_get_image client.upload_media: {str(err)}")
         return None
-    return mxc
+    size = len(og_image)
+    width, height = get_image_dimensions(og_image)
+    return mxc, size, width, height
 
 async def matrix_upload_video(self, video_url: str, html_custom_headers=None, mime_type: str="video/mp4", filename: str="video.mp4", max_video_size: int=50, media_data: bytes=None):
     if not video_url and not media_data:

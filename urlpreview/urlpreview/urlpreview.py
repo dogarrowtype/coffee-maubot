@@ -194,6 +194,9 @@ class UrlPreviewBot(Plugin):
                         url=item['mxc'],
                         info=ImageInfo(
                             mimetype=item.get('mime_type', 'image/jpeg'),
+                            size=item.get('size'),
+                            width=item.get('width'),
+                            height=item.get('height'),
                         ),
                     )
                     await evt.respond(content)
@@ -347,8 +350,13 @@ async def embed_url_preview(self, url_str, og, html_custom_headers=None, image_l
         return None, None
     # Fetch image_mxc
     image_mxc = og.get('image_mxc', None)
+    image_size = None
+    image_width = None
+    image_height = None
     if image_mxc is None:
-        image_mxc = await process_image(self, image=og.get('image', None), html_custom_headers=html_custom_headers, content_type=og.get('content_type', None))
+        result = await process_image(self, image=og.get('image', None), html_custom_headers=html_custom_headers, content_type=og.get('content_type', None))
+        if result:
+            image_mxc, image_size, image_width, image_height = result
     # Build image attachment info if we have an image
     content_type = og.get('content_type', 'image/jpeg')
     image_attachment = None
@@ -359,6 +367,9 @@ async def embed_url_preview(self, url_str, og, html_custom_headers=None, image_l
             'mxc': image_mxc,
             'mime_type': content_type or 'image/jpeg',
             'filename': f'image.{ext}',
+            'size': image_size,
+            'width': image_width,
+            'height': image_height,
         }
     # Check if only contains image (no text metadata)
     og_meta_keys = ['image', 'image_mxc', 'content_type', 'image_width', 'image_count', 'video', 'video_type', 'video_width', 'video_height', 'audio', 'audio_type', 'media_data']
