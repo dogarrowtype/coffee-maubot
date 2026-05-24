@@ -1,5 +1,7 @@
 # 🍢 coffee-maubot
 
+> **Fork notice:** This is a fork of [coffeebank/coffee-maubot](https://github.com/coffeebank/coffee-maubot). Only the [`urlpreview`](./urlpreview) plugin has been modified — all other plugins in this repo are unchanged from upstream and are not maintained here. For everything except `urlpreview`, use the upstream repo.
+
 Maubot plugins by coffee ☕
 
 [Maubot](https://github.com/maubot/maubot) is a self-hosted, plugin-based chat bot for [Matrix](https://matrix.org).

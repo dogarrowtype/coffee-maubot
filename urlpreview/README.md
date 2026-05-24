@@ -1,5 +1,7 @@
 # urlpreview
 
+> **Fork notice:** This is a fork of the `urlpreview` plugin from [coffeebank/coffee-maubot](https://github.com/coffeebank/coffee-maubot), with added support for oEmbed, URL rewrites, native image/video uploads, twitter video handling, and other changes. Plugin id is `dog.maubot.urlpreview` to avoid collision with upstream.
+
 A bot that responds to links with a link preview embed, using Matrix API to fetch meta tags
 
 ![preview.jpg](https://coffeebank.github.io/coffee-maubot/assets/urlpreview-preview.jpg)
