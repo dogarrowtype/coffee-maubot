@@ -9,6 +9,10 @@ image_link: false
 video_upload: true
 max_video_size: 50
 no_results_react: 💨
+e926:
+  enabled: true
+  hosts:
+    - e926.net
 url_blacklist:
   - ':\/\/matrix\.to\/'
   - '\.pdf($|\?)'

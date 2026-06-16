@@ -43,6 +43,7 @@ Images from embeds are sent as native Matrix image attachments (rather than inli
 - `video_upload` - Set to `true` to download and re-upload videos and audio from pages (eg. fixupx) or direct media links as native Matrix messages. Default `true`.
 - `max_video_size` - Maximum video/audio file size in MB before skipping the upload. Default `50`. Set to `0` for no limit.
 - `no_results_react` - Adds a reaction emoji to the message to show that no results were returned. Put `''` to disable.
+- `e926` - Custom handler for [e926](https://e926.net) post links (see [e926 Custom Handler](#e926-custom-handler) below)
 - `url_blacklist` - Disable urlpreview for an IP range or a Regex entry
 - `url_rewrite` - Rewrite URLs before fetching (see [URL Rewriting](#url-rewriting) below)
 - `user_blacklist` - Disable urlpreview for a user
@@ -91,6 +92,34 @@ url_rewrite:
 ```
 
 The rewritten URL replaces the original everywhere — both for fetching preview data and in the displayed embed. Only the first matching rule is applied per URL.
+
+<br />
+
+## e926 Custom Handler
+
+The `e926` config enables a dedicated handler for [e926](https://e926.net) post links. When a matching post URL is seen, this handler takes priority over the generic parsers.
+
+It works by:
+
+1. Rewriting the human-facing post URL to its machine-readable `.json` API equivalent, inserting `.json` before any query string:
+   - `https://e926.net/posts/6480895?q=white_fur` → `https://e926.net/posts/6480895.json?q=white_fur`
+   - `https://e926.net/posts/6480895` → `https://e926.net/posts/6480895.json`
+2. Fetching that API response and selecting the image to upload:
+   - If the post has a sample (`sample.has` is `true`), the **webp sample** is used.
+   - Otherwise, the full-size **file** is used.
+3. Building the message body from the post's **artist** tag(s) and **description** fields (the uploader name is never included).
+
+The image is uploaded as a native Matrix `m.image` attachment, with the artist/description sent as the accompanying text.
+
+```yaml
+e926:
+  enabled: true
+  hosts:
+    - e926.net
+```
+
+- `enabled` - Set to `false` to disable the e926 handler and fall back to the generic parsers. Default `true`.
+- `hosts` - List of hostnames to treat as e926-compatible. Only `/posts/<id>` URLs on these hosts are handled.
 
 <br />
 

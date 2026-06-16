@@ -9,6 +9,7 @@ import urllib.parse
 from urllib.parse import urlparse
 
 from .urlpreview_utils import *
+from .urlpreview_ext_e926 import *
 from .urlpreview_ext_htmlparser import *
 from .urlpreview_ext_json import *
 from .urlpreview_ext_oembed import *
@@ -35,6 +36,7 @@ class Config(BaseProxyConfig):
         helper.copy("video_upload")
         helper.copy("max_video_size")
         helper.copy("no_results_react")
+        helper.copy("e926")
         helper.copy("twitter_video_api")
         helper.copy("url_blacklist")
         helper.copy("url_rewrite")
@@ -114,6 +116,7 @@ class UrlPreviewBot(Plugin):
         VIDEO_UPLOAD = self.config["video_upload"]
         MAX_VIDEO_SIZE = self.config["max_video_size"]
         NO_RESULTS_REACT = self.config["no_results_react"]
+        E926 = self.config["e926"]
         TWITTER_VIDEO_API = self.config["twitter_video_api"]
         URL_BLACKLIST = self.config["url_blacklist"]
         URL_REWRITE = self.config["url_rewrite"]
@@ -146,16 +149,20 @@ class UrlPreviewBot(Plugin):
                 blocked_count += 1
                 continue
 
-            arg_arr = {
-                "self": self,
-                "url_str": url_str,
-                "ext_enabled": EXT_ENABLED,
-                "appid": appid,
-                "homeserver": HOMESERVER,
-                "html_custom_headers": HTML_CUSTOM_HEADERS,
-                "json_max_char": JSON_MAX_CHAR
-            }
-            og = await fetch_all(**arg_arr)
+            # Custom site handler: e926 post URLs are rewritten to the .json API
+            # and parsed directly, taking priority over the generic parsers.
+            og = await fetch_e926(self, url_str, E926, HTML_CUSTOM_HEADERS)
+            if not og:
+                arg_arr = {
+                    "self": self,
+                    "url_str": url_str,
+                    "ext_enabled": EXT_ENABLED,
+                    "appid": appid,
+                    "homeserver": HOMESERVER,
+                    "html_custom_headers": HTML_CUSTOM_HEADERS,
+                    "json_max_char": JSON_MAX_CHAR
+                }
+                og = await fetch_all(**arg_arr)
             # For fixupx/fxtwitter URLs, try the API to extract video if not found in meta tags
             if VIDEO_UPLOAD and TWITTER_VIDEO_API:
                 await _try_fxtwitter_video(self, url_str, og, HTML_CUSTOM_HEADERS, TWITTER_VIDEO_API)
