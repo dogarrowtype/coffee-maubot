@@ -36,7 +36,9 @@ class Config(BaseProxyConfig):
         helper.copy("video_upload")
         helper.copy("max_video_size")
         helper.copy("no_results_react")
-        helper.copy("e926")
+        helper.copy("e926.enabled")
+        helper.copy("e926.api_v2")
+        helper.copy("e926.hosts")
         helper.copy("twitter_video_api")
         helper.copy("url_blacklist")
         helper.copy("url_rewrite")
@@ -390,6 +392,8 @@ async def embed_url_preview(self, url_str, og, html_custom_headers=None, image_l
     title = format_title(og.get('title', None), url_str)
     description = format_description(og.get('description', None))
     attribution = format_attribution(og.get('oembed_attribution', None))
-    message = "".join(filter(None, [title, description, attribution, image_count_note]))
+    # Pre-formatted block HTML appended as a sibling (eg. e926 v2 tags dropdown)
+    extra_html = og.get('extra_html', None)
+    message = "".join(filter(None, [title, description, attribution, extra_html, image_count_note]))
     embed = f"<blockquote>{message}</blockquote>" if message else None
     return embed, image_attachment

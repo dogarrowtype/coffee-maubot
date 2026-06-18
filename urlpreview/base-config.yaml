@@ -11,6 +11,7 @@ max_video_size: 50
 no_results_react: 💨
 e926:
   enabled: true
+  api_v2: true
   hosts:
     - e926.net
 url_blacklist:

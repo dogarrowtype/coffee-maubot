@@ -104,22 +104,41 @@ It works by:
 1. Rewriting the human-facing post URL to its machine-readable `.json` API equivalent, inserting `.json` before any query string:
    - `https://e926.net/posts/6480895?q=white_fur` → `https://e926.net/posts/6480895.json?q=white_fur`
    - `https://e926.net/posts/6480895` → `https://e926.net/posts/6480895.json`
-2. Fetching that API response and selecting the image to upload:
-   - If the post has a sample (`sample.has` is `true`), the **webp sample** is used.
-   - Otherwise, the full-size **file** is used.
-3. Building the message body from the post's **artist** tag(s) and **description** fields (the uploader name is never included).
+2. Fetching that API response and selecting the media to upload:
+   - **Video posts** (when the post has a video): the **720p sample** is preferred, then the **480p sample**, then the **original** video file.
+   - **Image posts:** the **webp sample** is used if the post has one, otherwise the full-size **file**.
+3. Building the message body from the post's **description** plus, depending on the API version, the **artist** tag(s) (see [API v2](#api-v2) below).
 
-The image is uploaded as a native Matrix `m.image` attachment, with the artist/description sent as the accompanying text.
+The media is uploaded as a native Matrix `m.image` or `m.video` attachment, with the text sent as the accompanying message. (Video selection requires the v2 API and the global `video_upload` option, which is enabled by default; oversized videos are skipped per `max_video_size`.)
 
 ```yaml
 e926:
   enabled: true
+  api_v2: true
   hosts:
     - e926.net
 ```
 
 - `enabled` - Set to `false` to disable the e926 handler and fall back to the generic parsers. Default `true`.
+- `api_v2` - Use the v2 API response format (see [API v2](#api-v2) below). Set to `false` to use the older v1 format. Default `true`.
 - `hosts` - List of hostnames to treat as e926-compatible. Only `/posts/<id>` URLs on these hosts are handled.
+
+### API v2
+
+e926 is rolling out a new v2 API response format. While it's being phased in, it is requested by appending `?v2=true` to the API URL. This is enabled by default (`api_v2: true`); set it to `false` to fall back to the v1 format.
+
+When enabled, the handler requests `…/posts/<id>.json?v2=true` (any original query string on the link is dropped) and parses the v2 response shape.
+
+The main behavioral difference is the message body:
+
+- **v1 (`api_v2: false`):** tags are categorized, so the body shows the **artist** tag(s) followed by the **description**.
+- **v2 (`api_v2: true`):** tags are returned as a single flat, uncategorized list, so the artist can't be isolated. The body shows the **description**, followed by the full tag list in a collapsible `<details>` dropdown.
+
+The image selection (webp sample, else full-size file) is the same in both versions.
+
+### Rate limiting
+
+e926's API allows roughly 1 request per second (sustained bursts over 2 RPS are hard-blocked). The handler serializes its own requests and spaces them ~1.1s apart, so a message containing several e926 links is fetched sequentially rather than all at once. This only throttles e926 requests; other links are unaffected.
 
 <br />
 
